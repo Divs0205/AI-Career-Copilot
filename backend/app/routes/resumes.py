@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.resume import Resume
 from app.models.user import User
-
+from app.services.pdf_service import extract_text_from_pdf
 
 router = APIRouter(
     prefix="/resumes",
@@ -40,10 +40,13 @@ def upload_resume(
     with open(file_path, "wb") as buffer:
         buffer.write(file.file.read())
 
+    extracted_text = extract_text_from_pdf(file_path)
+
     resume = Resume(
         user_id=current_user.id,
         filename=file.filename,
-        file_path=file_path
+        file_path=file_path,
+        extracted_text=extracted_text
     )
 
     db.add(resume)
@@ -54,5 +57,7 @@ def upload_resume(
         "message": "Resume uploaded successfully",
         "resume_id": resume.id,
         "filename": resume.filename,
-        "user_id": current_user.id
+        "user_id": current_user.id,
+        "text_extracted": bool(extracted_text),
+        "text_preview": extracted_text[:200]
     }
