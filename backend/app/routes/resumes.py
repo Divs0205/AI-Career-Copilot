@@ -6,8 +6,11 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.resume import Resume
+from app.models.resume_analysis import ResumeAnalysis
 from app.models.user import User
+from app.schemas.analysis import CareerAnalysis
 from app.services.pdf_service import extract_text_from_pdf
+from app.services.ai_service import analyze_resume
 
 router = APIRouter(
     prefix="/resumes",
@@ -61,3 +64,72 @@ def upload_resume(
         "text_extracted": bool(extracted_text),
         "text_preview": extracted_text[:200]
     }
+
+
+@router.post("/{resume_id}/analyze", response_model=CareerAnalysis)
+def analyze_resume_endpoint(
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    resume = db.query(Resume).filter(
+        Resume.id == resume_id,
+        Resume.user_id == current_user.id
+    ).first()
+
+    if not resume:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found"
+        )
+
+    if not resume.extracted_text:
+        raise HTTPException(
+            status_code=400,
+            detail="No extracted text found for this resume"
+        )
+
+    # Send resume text to Gemini
+    analysis = analyze_resume(resume.extracted_text)
+
+    # Save the AI analysis to the database
+    resume_analysis = ResumeAnalysis(
+        resume_id=resume.id,
+        user_id=current_user.id,
+        skills=analysis.skills,
+        strengths=analysis.strengths,
+        skill_gaps=analysis.skill_gaps,
+        suitable_roles=analysis.suitable_roles,
+        recommendations=analysis.recommendations
+    )
+
+    db.add(resume_analysis)
+    db.commit()
+    db.refresh(resume_analysis)
+
+    return analysis
+
+@router.get("/{resume_id}/analysis", response_model=CareerAnalysis)
+def get_resume_analysis(
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    analysis = db.query(ResumeAnalysis).filter(
+        ResumeAnalysis.resume_id == resume_id,
+        ResumeAnalysis.user_id == current_user.id
+    ).order_by(ResumeAnalysis.id.desc()).first()
+
+    if not analysis:
+        raise HTTPException(
+            status_code=404,
+            detail="No analysis found for this resume"
+        )
+
+    return CareerAnalysis(
+        skills=analysis.skills,
+        strengths=analysis.strengths,
+        skill_gaps=analysis.skill_gaps,
+        suitable_roles=analysis.suitable_roles,
+        recommendations=analysis.recommendations
+    )
