@@ -8,14 +8,17 @@ from app.models.job import Job
 from app.models.resume import Resume
 from app.models.job_match import JobMatch
 from app.models.skill_gap import SkillGap
+from app.models.learning_plan import LearningPlan
 from app.models.user import User
 
 from app.schemas.job import JobCreate, JobResponse
 from app.schemas.job_match import JobMatchResponse
-from app.schemas.skill_gap import SkillGapResponse
+from app.schemas.skill_gap import SkillGap as SkillGapSchema, SkillGapResponse
+from app.schemas.learning_plan import LearningPlanResponse
 
 from app.services.job_match_service import match_resume_to_job
 from app.services.skill_gap_service import analyze_skill_gaps
+from app.services.learning_plan_service import generate_learning_plan
 
 
 router = APIRouter(
@@ -171,6 +174,107 @@ def generate_skill_gaps(
         )
 
         db.add(skill_gap)
+
+    db.commit()
+
+    return analysis
+
+@router.post(
+    "/{job_id}/learning-plan/{resume_id}",
+    response_model=LearningPlanResponse
+)
+def generate_learning_plan_endpoint(
+    job_id: int,
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Get the job belonging to the current user
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.user_id == current_user.id
+    ).first()
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+
+    # Get the resume belonging to the current user
+    resume = db.query(Resume).filter(
+        Resume.id == resume_id,
+        Resume.user_id == current_user.id
+    ).first()
+
+    if not resume:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found"
+        )
+
+    if not resume.extracted_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Resume has no extracted text"
+        )
+
+    # Get skill gaps for this job + resume
+    skill_gap_rows = db.query(SkillGap).filter(
+        SkillGap.job_id == job.id,
+        SkillGap.resume_id == resume.id,
+        SkillGap.user_id == current_user.id
+    ).all()
+
+    if not skill_gap_rows:
+        raise HTTPException(
+            status_code=404,
+            detail="No skill gap analysis found for this job and resume"
+        )
+
+    # Convert database rows into Pydantic SkillGap objects
+    skill_gaps = [
+        SkillGapSchema(
+            skill=gap.skill,
+            importance=gap.importance,
+            current_level=gap.current_level,
+            required_level=gap.required_level,
+            reason=gap.reason,
+            learning_focus=gap.learning_focus
+        )
+        for gap in skill_gap_rows
+    ]
+
+    # Generate personalized learning plan using Gemini
+    analysis = generate_learning_plan(
+        resume_text=resume.extracted_text,
+        job_description=job.description,
+        skill_gaps=skill_gaps
+    )
+
+    # Remove previous learning plans for this job + resume
+    db.query(LearningPlan).filter(
+        LearningPlan.job_id == job.id,
+        LearningPlan.resume_id == resume.id,
+        LearningPlan.user_id == current_user.id
+    ).delete(synchronize_session=False)
+
+    # Save every learning item
+    for plan in analysis.plans:
+        for item in plan.items:
+            learning_plan = LearningPlan(
+                job_id=job.id,
+                resume_id=resume.id,
+                user_id=current_user.id,
+                skill=plan.skill,
+                priority=plan.priority,
+                goal=plan.goal,
+                topic=item.topic,
+                description=item.description,
+                estimated_hours=item.estimated_hours
+            )
+
+            db.add(learning_plan)
 
     db.commit()
 
