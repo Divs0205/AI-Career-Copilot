@@ -15,6 +15,7 @@ from app.models.job import Job
 from app.models.job_match import JobMatch
 from app.models.skill_gap import SkillGap
 from app.models.learning_plan import LearningPlan
+from app.models.document_embedding import DocumentEmbedding
 
 load_dotenv()
 

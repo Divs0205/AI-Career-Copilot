@@ -11,6 +11,7 @@ from app.models.user import User
 from app.schemas.analysis import CareerAnalysis
 from app.services.pdf_service import extract_text_from_pdf
 from app.services.ai_service import analyze_resume
+from app.services.rag_service import embed_resume
 
 router = APIRouter(
     prefix="/resumes",
@@ -133,3 +134,35 @@ def get_resume_analysis(
         suitable_roles=analysis.suitable_roles,
         recommendations=analysis.recommendations
     )
+
+@router.post("/{resume_id}/embed")
+def embed_resume_endpoint(
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    resume = db.query(Resume).filter(
+        Resume.id == resume_id,
+        Resume.user_id == current_user.id
+    ).first()
+
+    if not resume:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found"
+        )
+
+    if not resume.extracted_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Resume has no extracted text"
+        )
+
+    result = embed_resume(
+        db=db,
+        user_id=current_user.id,
+        resume_id=resume.id,
+        resume_text=resume.extracted_text
+    )
+
+    return result
