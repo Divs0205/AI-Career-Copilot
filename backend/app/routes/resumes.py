@@ -56,6 +56,12 @@ def upload_resume(
     db.add(resume)
     db.commit()
     db.refresh(resume)
+    embed_result = embed_resume(
+        db=db,
+        user_id=current_user.id,
+        resume_id=resume.id,
+        resume_text=resume.extracted_text
+    )
 
     return {
         "message": "Resume uploaded successfully",
@@ -63,7 +69,9 @@ def upload_resume(
         "filename": resume.filename,
         "user_id": current_user.id,
         "text_extracted": bool(extracted_text),
-        "text_preview": extracted_text[:200]
+        "text_preview": extracted_text[:200],
+        "embeddings_created": True,
+        "chunks_created": embed_result["chunks_created"]
     }
 
 

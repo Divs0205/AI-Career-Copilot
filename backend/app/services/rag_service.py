@@ -11,6 +11,13 @@ def embed_resume(
     resume_id: int,
     resume_text: str
 ):
+    # Remove existing embeddings for this resume
+    db.query(DocumentEmbedding).filter(
+        DocumentEmbedding.user_id == user_id,
+        DocumentEmbedding.source_type == "resume",
+        DocumentEmbedding.source_id == resume_id
+    ).delete(synchronize_session=False)
+
     chunks = chunk_text(resume_text)
 
     for chunk in chunks:
