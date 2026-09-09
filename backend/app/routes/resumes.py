@@ -18,6 +18,23 @@ router = APIRouter(
     tags=["Resumes"]
 )
 
+@router.get("/")
+def get_resumes(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    resumes = db.query(Resume).filter(
+        Resume.user_id == current_user.id
+    ).order_by(Resume.id.desc()).all()
+
+    return [
+        {
+            "id": resume.id,
+            "filename": resume.filename,
+            "uploaded_at": resume.uploaded_at
+        }
+        for resume in resumes
+    ]
 
 UPLOAD_DIR = "uploads/resumes"
 

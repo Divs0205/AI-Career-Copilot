@@ -279,3 +279,113 @@ def generate_learning_plan_endpoint(
     db.commit()
 
     return analysis
+
+@router.get(
+    "/{job_id}/match/{resume_id}",
+    response_model=JobMatchResponse
+)
+def get_job_match(
+    job_id: int,
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    job_match = db.query(JobMatch).filter(
+        JobMatch.job_id == job_id,
+        JobMatch.resume_id == resume_id,
+        JobMatch.user_id == current_user.id
+    ).order_by(JobMatch.id.desc()).first()
+
+    if not job_match:
+        raise HTTPException(
+            status_code=404,
+            detail="No job match analysis found"
+        )
+
+    return JobMatchResponse(
+        match_percentage=job_match.match_percentage,
+        matched_skills=job_match.matched_skills,
+        missing_skills=job_match.missing_skills,
+        recommendations=job_match.recommendations
+    )
+
+
+@router.get(
+    "/{job_id}/skill-gaps/{resume_id}",
+    response_model=SkillGapResponse
+)
+def get_skill_gaps(
+    job_id: int,
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    skill_gap_rows = db.query(SkillGap).filter(
+        SkillGap.job_id == job_id,
+        SkillGap.resume_id == resume_id,
+        SkillGap.user_id == current_user.id
+    ).all()
+
+    if not skill_gap_rows:
+        raise HTTPException(
+            status_code=404,
+            detail="No skill gap analysis found"
+        )
+
+    return SkillGapResponse(
+        skill_gaps=[
+            SkillGapSchema(
+                skill=gap.skill,
+                importance=gap.importance,
+                current_level=gap.current_level,
+                required_level=gap.required_level,
+                reason=gap.reason,
+                learning_focus=gap.learning_focus
+            )
+            for gap in skill_gap_rows
+        ]
+    )
+
+
+@router.get(
+    "/{job_id}/learning-plan/{resume_id}",
+    response_model=LearningPlanResponse
+)
+def get_learning_plan(
+    job_id: int,
+    resume_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    learning_plan_rows = db.query(LearningPlan).filter(
+        LearningPlan.job_id == job_id,
+        LearningPlan.resume_id == resume_id,
+        LearningPlan.user_id == current_user.id
+    ).all()
+
+    if not learning_plan_rows:
+        raise HTTPException(
+            status_code=404,
+            detail="No learning plan found"
+        )
+
+    plans = {}
+
+    for row in learning_plan_rows:
+        if row.skill not in plans:
+            plans[row.skill] = {
+                "skill": row.skill,
+                "priority": row.priority,
+                "goal": row.goal,
+                "items": []
+            }
+
+        plans[row.skill]["items"].append({
+            "topic": row.topic,
+            "description": row.description,
+            "estimated_hours": row.estimated_hours
+        })
+
+    return LearningPlanResponse(
+        plans=list(plans.values())
+    )

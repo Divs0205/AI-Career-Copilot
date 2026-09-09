@@ -12,10 +12,14 @@ from app.models.user import User
 from app.models.resume import Resume
 from app.models.resume_analysis import ResumeAnalysis
 from app.models.job import Job
+from app.models.interview import Interview
+from app.models.interview_question import InterviewQuestion
 from app.models.job_match import JobMatch
 from app.models.skill_gap import SkillGap
 from app.models.learning_plan import LearningPlan
 from app.models.document_embedding import DocumentEmbedding
+from app.models.conversation import Conversation
+from app.models.message import Message
 
 load_dotenv()
 
